@@ -9,7 +9,7 @@ import {
   QrCode
 } from 'lucide-react';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [stats, setStats] = useState({
     totalStudents: 0,
     presentToday: 0,
@@ -128,7 +128,10 @@ export default function Dashboard() {
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-6">Quick Actions</h2>
           <div className="space-y-4">
-            <button className="w-full flex items-center gap-4 p-4 rounded-2xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all group">
+            <button 
+              onClick={() => onNavigate('students')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all group"
+            >
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
                 <Users className="w-5 h-5" />
               </div>
@@ -137,7 +140,10 @@ export default function Dashboard() {
                 <p className="text-xs opacity-70">Register new student</p>
               </div>
             </button>
-            <button className="w-full flex items-center gap-4 p-4 rounded-2xl bg-green-50 text-green-600 hover:bg-green-100 transition-all group">
+            <button 
+              onClick={() => onNavigate('scanner')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-green-50 text-green-600 hover:bg-green-100 transition-all group"
+            >
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
                 <QrCode className="w-5 h-5" />
               </div>

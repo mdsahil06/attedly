@@ -36,6 +36,15 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
+  app.get('/api/health', (req, res) => {
+    try {
+      db.prepare('SELECT 1').get();
+      res.json({ status: 'ok', database: 'connected' });
+    } catch (error: any) {
+      res.status(500).json({ status: 'error', database: error.message });
+    }
+  });
+
   app.get('/api/students', (req, res) => {
     const students = db.prepare('SELECT * FROM students ORDER BY name ASC').all();
     res.json(students);
@@ -43,10 +52,17 @@ async function startServer() {
 
   app.post('/api/students', (req, res) => {
     const { roll_no, name, course } = req.body;
+    console.log('Registering student:', { roll_no, name, course });
+    
+    if (!roll_no || !name || !course) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
     try {
       const info = db.prepare('INSERT INTO students (roll_no, name, course) VALUES (?, ?, ?)').run(roll_no, name, course);
       res.json({ id: info.lastInsertRowid });
     } catch (error: any) {
+      console.error('Database error:', error);
       res.status(400).json({ error: error.message });
     }
   });

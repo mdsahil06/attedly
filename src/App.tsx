@@ -148,7 +148,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="max-w-7xl mx-auto"
             >
-              {activeTab === 'dashboard' && <Dashboard />}
+              {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} />}
               {activeTab === 'students' && <StudentManagement />}
               {activeTab === 'scanner' && <AttendanceScanner />}
               {activeTab === 'reports' && <AttendanceReports />}

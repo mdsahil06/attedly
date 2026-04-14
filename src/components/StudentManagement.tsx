@@ -7,7 +7,8 @@ import {
   QrCode as QrIcon,
   X,
   Download,
-  UserPlus
+  UserPlus,
+  RefreshCw
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -28,20 +29,32 @@ export default function StudentManagement() {
     setStudents(data);
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/students', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newStudent)
-    });
-    if (res.ok) {
-      setNewStudent({ roll_no: '', name: '', course: '' });
-      setIsModalOpen(false);
-      fetchStudents();
-    } else {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newStudent)
+      });
+      
       const data = await res.json();
-      alert(data.error);
+      
+      if (res.ok) {
+        setNewStudent({ roll_no: '', name: '', course: '' });
+        setIsModalOpen(false);
+        fetchStudents();
+      } else {
+        alert(data.error || 'Failed to register student');
+      }
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      alert('Network error: Could not connect to the server');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -218,9 +231,17 @@ export default function StudentManagement() {
                 </div>
                 <button 
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-100 transition-all mt-4"
+                  disabled={isSubmitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-100 transition-all mt-4 flex items-center justify-center gap-2"
                 >
-                  Register Student
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    'Register Student'
+                  )}
                 </button>
               </form>
             </motion.div>
