@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { 
   QrCode, 
   CheckCircle2, 
@@ -11,32 +11,55 @@ import {
 
 export default function AttendanceScanner() {
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string; name?: string; time?: string } | null>(null);
-  const [isScanning, setIsScanning] = useState(true);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [isScanning, setIsScanning] = useState(false); // Default to false to avoid immediate prompt
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const qrCodeRef = useRef<Html5Qrcode | null>(null);
+  const isProcessingRef = useRef(false);
+
+  const startScanner = async () => {
+    setPermissionError(null);
+    try {
+      // Ensure any existing scanner is stopped
+      if (qrCodeRef.current && qrCodeRef.current.isScanning) {
+        await qrCodeRef.current.stop();
+      }
+
+      const html5QrCode = new Html5Qrcode("reader");
+      qrCodeRef.current = html5QrCode;
+
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanFailure
+      );
+      setIsScanning(true);
+    } catch (err: any) {
+      console.error("Unable to start scanner", err);
+      if (err?.toString().includes("NotAllowedError") || err?.toString().includes("Permission denied")) {
+        setPermissionError("Camera permission was denied. Please allow camera access in your browser settings and click 'Retry'.");
+      } else {
+        setPermissionError("Could not access camera. Please ensure no other app is using it and try again.");
+      }
+      setIsScanning(false);
+    }
+  };
 
   useEffect(() => {
-    if (isScanning) {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-      );
-
-      scanner.render(onScanSuccess, onScanFailure);
-      scannerRef.current = scanner;
-    }
-
+    // We don't auto-start here to avoid immediate permission prompt on mount
+    // which can be blocked by browsers if not triggered by user action.
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
+      if (qrCodeRef.current && qrCodeRef.current.isScanning) {
+        qrCodeRef.current.stop().catch(err => console.error("Failed to stop scanner", err));
       }
     };
-  }, [isScanning]);
+  }, []);
 
   async function onScanSuccess(decodedText: string) {
-    if (scannerRef.current) {
-      scannerRef.current.pause();
-    }
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
 
     try {
       const res = await fetch('/api/attendance', {
@@ -67,15 +90,24 @@ export default function AttendanceScanner() {
     // Reset after 3 seconds
     setTimeout(() => {
       setScanResult(null);
-      if (scannerRef.current) {
-        scannerRef.current.resume();
-      }
+      isProcessingRef.current = false;
     }, 3000);
   }
 
   function onScanFailure(error: any) {
-    // console.warn(`Code scan error = ${error}`);
+    // Ignore scan failures as they happen constantly when no QR is in view
   }
+
+  const toggleScanner = async () => {
+    if (isScanning) {
+      if (qrCodeRef.current && qrCodeRef.current.isScanning) {
+        await qrCodeRef.current.stop();
+      }
+      setIsScanning(false);
+    } else {
+      await startScanner();
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -85,18 +117,37 @@ export default function AttendanceScanner() {
       </div>
 
       <div className="relative">
-        <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
+        <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl overflow-hidden min-h-[300px] flex items-center justify-center relative">
           <div id="reader" className="w-full rounded-2xl overflow-hidden border-0"></div>
           
-          {!isScanning && (
-            <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-8 text-center">
-              <Camera className="w-16 h-16 mb-4 opacity-50" />
-              <h3 className="text-xl font-bold">Scanner Paused</h3>
+          {!isScanning && !permissionError && (
+            <div className="absolute inset-0 bg-gray-50 flex flex-col items-center justify-center p-8 text-center z-10">
+              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                <Camera className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Camera Ready</h3>
+              <p className="text-gray-500 mt-2 max-w-xs">Click the button below to start the scanner and grant camera permissions.</p>
               <button 
-                onClick={() => setIsScanning(true)}
-                className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-all"
+                onClick={toggleScanner}
+                className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-100 transition-all transform active:scale-95"
               >
-                Resume Scanner
+                Start Scanner
+              </button>
+            </div>
+          )}
+
+          {permissionError && (
+            <div className="absolute inset-0 bg-red-50 flex flex-col items-center justify-center p-8 text-center z-10">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-red-900">Permission Denied</h3>
+              <p className="text-red-700 mt-2 max-w-xs">{permissionError}</p>
+              <button 
+                onClick={startScanner}
+                className="mt-6 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-red-100 transition-all transform active:scale-95"
+              >
+                Retry Permission
               </button>
             </div>
           )}
@@ -109,7 +160,7 @@ export default function AttendanceScanner() {
               initial={{ opacity: 0, y: 20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className={`absolute inset-x-4 bottom-4 p-6 rounded-2xl shadow-2xl flex items-center gap-4 border ${
+              className={`absolute inset-x-4 bottom-4 p-6 rounded-2xl shadow-2xl flex items-center gap-4 border z-20 ${
                 scanResult.success 
                   ? "bg-green-50 border-green-200 text-green-800" 
                   : "bg-red-50 border-red-200 text-red-800"
@@ -135,6 +186,19 @@ export default function AttendanceScanner() {
         </AnimatePresence>
       </div>
 
+      <div className="flex justify-center">
+        <button 
+          onClick={toggleScanner}
+          className="text-sm font-semibold text-gray-500 hover:text-gray-900 flex items-center gap-2 transition-colors"
+        >
+          {isScanning ? (
+            <>Stop Camera</>
+          ) : (
+            <>Start Camera</>
+          )}
+        </button>
+      </div>
+
       <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-start gap-4">
         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
           <QrCode className="text-blue-600 w-5 h-5" />
@@ -152,3 +216,4 @@ export default function AttendanceScanner() {
     </div>
   );
 }
+
