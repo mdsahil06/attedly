@@ -13,12 +13,14 @@ import {
   LogOut,
   Menu,
   X,
-  UserCircle
+  UserCircle,
+  Coffee
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import StudentManagement from './components/StudentManagement';
 import AttendanceScanner from './components/AttendanceScanner';
 import AttendanceReports from './components/AttendanceReports';
+import JavaSource from './components/JavaSource';
 import Login from './components/Login';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -57,6 +59,7 @@ export default function App() {
     { id: 'students', label: 'Students', icon: Users },
     { id: 'scanner', label: 'Scan QR', icon: QrCode },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'java', label: 'Java Source', icon: Coffee },
   ];
 
   return (
@@ -149,6 +152,7 @@ export default function App() {
               {activeTab === 'students' && <StudentManagement />}
               {activeTab === 'scanner' && <AttendanceScanner />}
               {activeTab === 'reports' && <AttendanceReports />}
+              {activeTab === 'java' && <JavaSource />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -156,4 +160,5 @@ export default function App() {
     </div>
   );
 }
+
 
