@@ -3,31 +3,45 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database('attendance.db');
+// Use absolute path for database to ensure consistency across environments
+const dbPath = path.resolve(__dirname, 'attendance.db');
+console.log('Database path:', dbPath);
 
-// Initialize Database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS students (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    roll_no TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    course TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+let db: Database.Database;
 
-  CREATE TABLE IF NOT EXISTS attendance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    time TEXT NOT NULL,
-    FOREIGN KEY (student_id) REFERENCES students(id),
-    UNIQUE(student_id, date)
-  );
-`);
+try {
+  db = new Database(dbPath);
+  console.log('Database connected successfully');
+  
+  // Initialize Database
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS students (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      roll_no TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      course TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      FOREIGN KEY (student_id) REFERENCES students(id),
+      UNIQUE(student_id, date)
+    );
+  `);
+  console.log('Database schema initialized');
+} catch (err) {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+}
 
 async function startServer() {
   const app = express();
@@ -39,20 +53,29 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     try {
       db.prepare('SELECT 1').get();
-      res.json({ status: 'ok', database: 'connected' });
+      res.json({ 
+        status: 'ok', 
+        database: 'connected',
+        dbPath: dbPath,
+        writable: fs.accessSync(path.dirname(dbPath), fs.constants.W_OK) === undefined
+      });
     } catch (error: any) {
       res.status(500).json({ status: 'error', database: error.message });
     }
   });
 
   app.get('/api/students', (req, res) => {
-    const students = db.prepare('SELECT * FROM students ORDER BY name ASC').all();
-    res.json(students);
+    try {
+      const students = db.prepare('SELECT * FROM students ORDER BY name ASC').all();
+      res.json(students);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   app.post('/api/students', (req, res) => {
     const { roll_no, name, course } = req.body;
-    console.log('Registering student:', { roll_no, name, course });
+    console.log('API: Registering student:', { roll_no, name, course });
     
     if (!roll_no || !name || !course) {
       return res.status(400).json({ error: 'All fields are required' });
@@ -62,7 +85,10 @@ async function startServer() {
       const info = db.prepare('INSERT INTO students (roll_no, name, course) VALUES (?, ?, ?)').run(roll_no, name, course);
       res.json({ id: info.lastInsertRowid });
     } catch (error: any) {
-      console.error('Database error:', error);
+      console.error('API Error: Database error during registration:', error);
+      if (error.message.includes('UNIQUE constraint failed: students.roll_no')) {
+        return res.status(400).json({ error: 'A student with this Roll Number is already registered.' });
+      }
       res.status(400).json({ error: error.message });
     }
   });
@@ -114,8 +140,12 @@ async function startServer() {
 
     query += ' ORDER BY a.date DESC, a.time DESC';
     
-    const records = db.prepare(query).all(...params);
-    res.json(records);
+    try {
+      const records = db.prepare(query).all(...params);
+      res.json(records);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Vite middleware for development
@@ -126,16 +156,31 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    const distPath = path.resolve(__dirname, 'dist');
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    } else {
+      console.warn('Production build not found at:', distPath);
+      app.get('*', (req, res) => {
+        res.status(404).send('Production build not found. Please run build first.');
+      });
+    }
   }
+
+  // Global error handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Unhandled Server Error:', err);
+    res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+});
