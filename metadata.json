@@ -1,0 +1,6 @@
+{
+  "name": "Attendly",
+  "description": "A modern QR-based Student Attendance Management System with real-time scanning and reporting.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}
